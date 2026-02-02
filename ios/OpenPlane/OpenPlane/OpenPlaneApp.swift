@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PlaneMobileApp: App {
+struct OpenPlaneApp: App {
   var body: some Scene {
     WindowGroup {
       RootView()

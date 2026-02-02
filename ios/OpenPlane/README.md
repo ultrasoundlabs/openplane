@@ -1,4 +1,4 @@
-# PlaneMobile (iOS)
+# OpenPlane (iOS)
 
 Minimal SwiftUI client for the Plane Community Edition REST API using Personal Access Tokens.
 
@@ -12,9 +12,9 @@ Minimal SwiftUI client for the Plane Community Edition REST API using Personal A
 From repo root:
 
 ```sh
-cd ios/PlaneMobile
+cd ios/OpenPlane
 xcodegen generate
-open PlaneMobile.xcodeproj
+open OpenPlane.xcodeproj
 ```
 
 ## Configure in-app

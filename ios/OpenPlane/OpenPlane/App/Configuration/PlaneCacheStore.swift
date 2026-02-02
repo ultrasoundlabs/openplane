@@ -10,8 +10,13 @@ final class PlaneCacheStore {
 
   private var baseDirectory: URL {
     let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-    let dir = base.appendingPathComponent("PlaneMobileCache", isDirectory: true)
+    let dir = base.appendingPathComponent("OpenPlaneCache", isDirectory: true)
     if !fileManager.fileExists(atPath: dir.path) {
+      // Best-effort migration from old cache location.
+      let legacy = base.appendingPathComponent("PlaneMobileCache", isDirectory: true)
+      if fileManager.fileExists(atPath: legacy.path) {
+        try? fileManager.moveItem(at: legacy, to: dir)
+      }
       try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
     }
     return dir

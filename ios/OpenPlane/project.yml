@@ -1,4 +1,4 @@
-name: PlaneMobile
+name: OpenPlane
 
 options:
   bundleIdPrefix: com.openplane
@@ -11,15 +11,14 @@ settings:
     DEVELOPMENT_TEAM: ""
 
 targets:
-  PlaneMobile:
+  OpenPlane:
     type: application
     platform: iOS
     sources:
-      - path: PlaneMobile
+      - path: OpenPlane
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.openplane.PlaneMobile
-        INFOPLIST_FILE: PlaneMobile/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.openplane.OpenPlane
+        INFOPLIST_FILE: OpenPlane/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-

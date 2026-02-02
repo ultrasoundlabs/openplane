@@ -76,7 +76,9 @@ struct EditProfileView: View {
       workItemPathTemplate = initial.workItemPathTemplate ?? ""
 
       if !isNew {
-        apiKey = Keychain.shared.read(service: "PlaneMobile", account: "apiKey.\(initial.id.uuidString)") ?? ""
+        apiKey = Keychain.shared.read(service: "OpenPlane", account: "apiKey.\(initial.id.uuidString)")
+          ?? Keychain.shared.read(service: "PlaneMobile", account: "apiKey.\(initial.id.uuidString)")
+          ?? ""
       }
 
       if webBaseURLString.isEmpty {
