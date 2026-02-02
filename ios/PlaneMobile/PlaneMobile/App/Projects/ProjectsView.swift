@@ -2,11 +2,12 @@ import SwiftUI
 
 struct ProjectsView: View {
   @EnvironmentObject private var session: SessionStore
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     Group {
       if !session.isConfigured {
-        ContentUnavailableView("Not configured", systemImage: "gear", description: Text("Set your Plane base URL, workspace slug, and API key."))
+        ContentUnavailableView("Not configured", systemImage: "gear", description: Text("Add a Plane profile in Settings."))
       } else if session.isLoadingProjects && session.projects.isEmpty {
         ProgressView("Loading projects…")
       } else if let error = session.lastError, session.projects.isEmpty {
@@ -51,6 +52,17 @@ struct ProjectsView: View {
           Image(systemName: "arrow.clockwise")
         }
       }
+      ToolbarItem(placement: .topBarTrailing) {
+        if let profile = session.currentProfile {
+          Button {
+            let url = profile.webBaseURL.appending(path: "\(profile.workspaceSlug)/projects/")
+            openURL(url)
+          } label: {
+            Image(systemName: "safari")
+          }
+          .accessibilityLabel("Open Plane in Safari")
+        }
+      }
     }
     .task {
       if session.projects.isEmpty {
@@ -59,4 +71,3 @@ struct ProjectsView: View {
     }
   }
 }
-

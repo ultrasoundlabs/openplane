@@ -41,4 +41,13 @@ final class Keychain: @unchecked Sendable {
     guard status == errSecSuccess, let data = result as? Data else { return nil }
     return String(data: data, encoding: .utf8)
   }
+
+  func delete(service: String, account: String) {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(query as CFDictionary)
+  }
 }

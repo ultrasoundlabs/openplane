@@ -4,6 +4,8 @@ struct PlaneAPIClient {
   let baseURL: URL
   let apiKey: String
 
+  private let maxRetries = 3
+
   private let decoder: JSONDecoder = {
     let d = JSONDecoder()
     d.keyDecodingStrategy = .convertFromSnakeCase
@@ -26,14 +28,67 @@ struct PlaneAPIClient {
   }
 
   func listWorkItems(workspaceSlug: String, projectID: String) async throws -> [PlaneWorkItem] {
+    try await listWorkItems(workspaceSlug: workspaceSlug, projectID: projectID, filter: .init())
+  }
+
+  struct WorkItemsFilter: Hashable {
+    var stateID: String?
+    var assigneeID: String?
+    var search: String?
+    var limit: Int? = 50
+    var offset: Int? = nil
+    var expand: String = "state,assignees,labels,type"
+
+    init(stateID: String? = nil, assigneeID: String? = nil, search: String? = nil, limit: Int? = 50, offset: Int? = nil) {
+      self.stateID = stateID
+      self.assigneeID = assigneeID
+      self.search = search
+      self.limit = limit
+      self.offset = offset
+    }
+  }
+
+  func listWorkItems(workspaceSlug: String, projectID: String, filter: WorkItemsFilter) async throws -> [PlaneWorkItem] {
     let path = "/api/v1/workspaces/\(workspaceSlug)/projects/\(projectID)/work-items/"
-    // Ask for state expansion when supported; callers can still decode if not expanded.
-    return try await sendList(.init(method: "GET", path: path, query: ["expand": "state"]), as: PlaneWorkItem.self)
+    var query: [String: String] = [:]
+    if let stateID = filter.stateID { query["state"] = stateID }
+    if let assigneeID = filter.assigneeID { query["assignee"] = assigneeID }
+    if let limit = filter.limit { query["limit"] = String(limit) }
+    if let offset = filter.offset { query["offset"] = String(offset) }
+    if !filter.expand.isEmpty { query["expand"] = filter.expand }
+    return try await sendList(.init(method: "GET", path: path, query: query), as: PlaneWorkItem.self)
   }
 
   func listStates(workspaceSlug: String, projectID: String) async throws -> [PlaneState] {
     let path = "/api/v1/workspaces/\(workspaceSlug)/projects/\(projectID)/states/"
     return try await sendList(.init(method: "GET", path: path), as: PlaneState.self)
+  }
+
+  func listLabels(workspaceSlug: String, projectID: String) async throws -> [PlaneLabel] {
+    let path = "/api/v1/workspaces/\(workspaceSlug)/projects/\(projectID)/labels/"
+    return try await sendList(.init(method: "GET", path: path), as: PlaneLabel.self)
+  }
+
+  func listWorkItemTypes(workspaceSlug: String, projectID: String) async throws -> [PlaneWorkItemType] {
+    let path = "/api/v1/workspaces/\(workspaceSlug)/projects/\(projectID)/work-item-types/"
+    return try await sendList(.init(method: "GET", path: path), as: PlaneWorkItemType.self)
+  }
+
+  func listMembers(workspaceSlug: String) async throws -> [PlaneMember] {
+    let path = "/api/v1/workspaces/\(workspaceSlug)/members/"
+    return try await sendList(.init(method: "GET", path: path), as: PlaneMember.self)
+  }
+
+  func searchWorkItems(workspaceSlug: String, search: String, projectID: String?) async throws -> [PlaneWorkItem] {
+    let path = "/api/v1/workspaces/\(workspaceSlug)/work-items/search/"
+    var query: [String: String] = ["search": search, "expand": "state,assignees,labels,type,project"]
+    if let projectID { query["project"] = projectID }
+    return try await sendList(.init(method: "GET", path: path, query: query), as: PlaneWorkItem.self)
+  }
+
+  func getWorkItemDetail(workspaceSlug: String, projectID: String, workItemID: String) async throws -> PlaneWorkItem {
+    let path = "/api/v1/workspaces/\(workspaceSlug)/projects/\(projectID)/work-items/\(workItemID)/"
+    return try await send(.init(method: "GET", path: path, query: ["expand": "state,assignees,labels,type,project"]), as: PlaneWorkItem.self)
   }
 
   func createWorkItem(workspaceSlug: String, projectID: String, body: CreateWorkItemRequest) async throws -> PlaneWorkItem {
@@ -67,6 +122,10 @@ struct PlaneAPIClient {
   }
 
   private func sendRaw(_ request: PlaneRequest) async throws -> Data {
+    try await sendRaw(request, attempt: 0)
+  }
+
+  private func sendRaw(_ request: PlaneRequest, attempt: Int) async throws -> Data {
     var url = baseURL
     if request.path.hasPrefix("/") {
       url.append(path: String(request.path.dropFirst()))
@@ -90,7 +149,16 @@ struct PlaneAPIClient {
       urlRequest.httpBody = body
     }
 
-    let (data, response) = try await URLSession.shared.data(for: urlRequest)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await URLSession.shared.data(for: urlRequest)
+    } catch {
+      if attempt < maxRetries {
+        try await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
+        return try await sendRaw(request, attempt: attempt + 1)
+      }
+      throw PlaneAPIError.unknown(error)
+    }
     guard let http = response as? HTTPURLResponse else {
       throw PlaneAPIError.invalidResponse
     }
@@ -99,10 +167,34 @@ struct PlaneAPIClient {
       return data
     }
 
+    if http.statusCode == 429, attempt < maxRetries {
+      let delay = retryDelaySeconds(from: http) ?? min(5.0, pow(2.0, Double(attempt)))
+      try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      return try await sendRaw(request, attempt: attempt + 1)
+    }
+
+    if (500..<600).contains(http.statusCode), attempt < maxRetries {
+      let delay = min(5.0, pow(2.0, Double(attempt)))
+      try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      return try await sendRaw(request, attempt: attempt + 1)
+    }
+
     if let err = try? decoder.decode(PlaneAPIErrorBody.self, from: data) {
       throw PlaneAPIError.http(status: http.statusCode, body: err)
     }
     throw PlaneAPIError.http(status: http.statusCode, body: nil)
+  }
+
+  private func retryDelaySeconds(from response: HTTPURLResponse) -> Double? {
+    let headers = response.allHeaderFields
+    if let retryAfter = headers["Retry-After"] as? String, let seconds = Double(retryAfter) {
+      return max(0.0, seconds)
+    }
+    if let reset = headers["X-RateLimit-Reset"] as? String, let epoch = Double(reset) {
+      let now = Date().timeIntervalSince1970
+      return max(0.5, epoch - now)
+    }
+    return nil
   }
 }
 
@@ -164,4 +256,3 @@ enum PlaneAPIError: Error {
     }
   }
 }
-
