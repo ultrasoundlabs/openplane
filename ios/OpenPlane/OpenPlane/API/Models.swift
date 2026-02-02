@@ -74,7 +74,13 @@ struct PlaneWorkItem: Codable, Identifiable, Hashable {
 
   var stateName: String? { state?.name }
   var priority: PlanePriority { PlanePriority(rawValue: priorityRaw ?? "") ?? .none }
-  var descriptionText: String? { descriptionStripped }
+  var descriptionText: String? {
+    if let s = descriptionStripped?.trimmedNonEmpty { return s }
+    if let html = descriptionHTML?.trimmedNonEmpty {
+      return PlaneHTML.plainText(html).trimmedNonEmpty
+    }
+    return nil
+  }
   var assigneeNames: String {
     let names = (assignees ?? []).map(\.bestName).filter { !$0.isEmpty }
     return names.joined(separator: ", ")
@@ -334,6 +340,22 @@ enum PlaneHTML {
       .replacingOccurrences(of: "\"", with: "&quot;")
       .replacingOccurrences(of: "'", with: "&#39;")
     return "<p>\(escaped.replacingOccurrences(of: "\n", with: "<br/>"))</p>"
+  }
+
+  static func plainText(_ html: String) -> String {
+    // Best-effort conversion for displaying `description_html` in list/detail views.
+    guard let data = html.data(using: .utf8) else { return html }
+    if let attributed = try? NSAttributedString(
+      data: data,
+      options: [
+        .documentType: NSAttributedString.DocumentType.html,
+        .characterEncoding: String.Encoding.utf8.rawValue,
+      ],
+      documentAttributes: nil
+    ) {
+      return attributed.string
+    }
+    return html
   }
 }
 
