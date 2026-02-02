@@ -125,6 +125,7 @@ struct CreateWorkItemView: View {
       if session.labelsByProject[project.id] == nil { await session.loadLabels(project: project) }
       if session.workItemTypesByProject[project.id] == nil { await session.loadWorkItemTypes(project: project) }
       if session.currentUser == nil { await session.bootstrap() }
+      if session.membersByWorkspace[session.currentProfile?.workspaceSlug ?? ""] == nil { await session.loadMembers() }
     }
     .alert("Create failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
       Button("OK", role: .cancel) {}
@@ -149,7 +150,7 @@ struct CreateWorkItemView: View {
         targetDate: (hasTargetDate ? targetDate : nil).map { PlaneDateFormatter.api.string(from: $0) }
       )
       _ = try await session.createWorkItem(project: project, body: body)
-      await session.refreshWorkItems(project: project, stateID: nil, mineOnly: false)
+      await session.refreshWorkItems(project: project, stateID: nil, mineOnly: false, replaceExisting: false)
       onDone()
     } catch {
       errorMessage = error.localizedDescription

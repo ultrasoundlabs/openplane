@@ -9,8 +9,9 @@ struct RootView: View {
 
   init() {
     let env = ProcessInfo.processInfo.environment
-    let secrets: SecretStoring = env["OPENPLANE_UI_TESTS"] == "1" ? UserDefaultsSecretStore() : Keychain.shared
-    let profiles = ProfilesStore(secretStore: secrets)
+    let defaults = OpenPlaneRuntime.defaults(env)
+    let secrets = OpenPlaneRuntime.secretStore(defaults: defaults, env: env)
+    let profiles = ProfilesStore(defaults: defaults, secretStore: secrets)
     _profiles = StateObject(wrappedValue: profiles)
     if ProcessInfo.processInfo.environment["OPENPLANE_UI_STUBS"] == "1" {
       let config = URLSessionConfiguration.ephemeral

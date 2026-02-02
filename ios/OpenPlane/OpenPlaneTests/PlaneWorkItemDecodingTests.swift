@@ -34,4 +34,24 @@ final class PlaneWorkItemDecodingTests: XCTestCase {
     XCTAssertNil(second.type)
     XCTAssertEqual(second.typeID, "t1")
   }
+
+  func testDescriptionTextFallsBackToDescriptionHTML() throws {
+    let json = """
+    {
+      "id": "w_html",
+      "name": "Has HTML",
+      "description_html": "<div><p>Initialize <code>ultrasoundlabs/untron-accounts</code> as a pnpm monorepo.</p><ul><li>workspace layout (apps/*, packages/*)</li><li>lint/format (eslint/prettier)</li></ul></div>"
+    }
+    """
+    let data = Data(json.utf8)
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    let item = try decoder.decode(PlaneWorkItem.self, from: data)
+
+    let text = item.descriptionText ?? ""
+    XCTAssertFalse(text.contains("<"))
+    XCTAssertTrue(text.contains("Initialize"))
+    XCTAssertTrue(text.contains("ultrasoundlabs/untron-accounts"))
+    XCTAssertTrue(text.contains("workspace layout"))
+  }
 }

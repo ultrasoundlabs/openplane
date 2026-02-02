@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MyWorkView: View {
   @EnvironmentObject private var session: SessionStore
+  @EnvironmentObject private var preferences: AppPreferences
+  @EnvironmentObject private var networkMonitor: NetworkMonitor
 
   @State private var isLoading = false
   @State private var errorMessage: String?
@@ -74,7 +76,21 @@ struct MyWorkView: View {
       if session.currentUser == nil {
         await session.bootstrap()
       }
+      if session.projects.isEmpty {
+        await session.loadProjects(force: false)
+      }
       if items.isEmpty {
+        await load()
+      }
+    }
+    .task(id: preferences.autoRefreshEnabled ? "auto" : "off") {
+      guard preferences.autoRefreshEnabled else { return }
+      while !Task.isCancelled {
+        let interval = max(30, preferences.autoRefreshIntervalSeconds)
+        try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+        guard !Task.isCancelled else { return }
+        guard networkMonitor.isOnline else { continue }
+        if isLoading { continue }
         await load()
       }
     }
@@ -108,4 +124,3 @@ struct MyWorkItem: Identifiable, Hashable {
   let workItem: PlaneWorkItem
   var id: String { "\(projectID)|\(workItem.id)" }
 }
-

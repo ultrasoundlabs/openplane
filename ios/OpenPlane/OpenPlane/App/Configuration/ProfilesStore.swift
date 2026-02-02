@@ -5,12 +5,14 @@ final class ProfilesStore: ObservableObject {
   private static let keychainService = "OpenPlane"
   private static let legacyKeychainService = "PlaneMobile"
 
+  private let defaults: UserDefaults
   private let secretStore: SecretStoring
 
   @Published private(set) var profiles: [PlaneProfile] = []
   @Published var selectedProfileID: UUID?
 
-  init(secretStore: SecretStoring = Keychain.shared) {
+  init(defaults: UserDefaults = .standard, secretStore: SecretStoring = Keychain.shared) {
+    self.defaults = defaults
     self.secretStore = secretStore
     load()
     migrateLegacyIfNeeded()
@@ -109,7 +111,6 @@ final class ProfilesStore: ObservableObject {
   // MARK: - Persistence
 
   private func load() {
-    let defaults = UserDefaults.standard
     selectedProfileID = defaults.string(forKey: "plane.selectedProfileID").flatMap(UUID.init)
     if let data = defaults.data(forKey: "plane.profiles"),
        let decoded = try? JSONDecoder().decode([PlaneProfile].self, from: data) {
@@ -120,7 +121,6 @@ final class ProfilesStore: ObservableObject {
   }
 
   private func save() {
-    let defaults = UserDefaults.standard
     defaults.set(selectedProfileID?.uuidString, forKey: "plane.selectedProfileID")
     if let data = try? JSONEncoder().encode(profiles) {
       defaults.set(data, forKey: "plane.profiles")
@@ -132,7 +132,6 @@ final class ProfilesStore: ObservableObject {
     // - plane.baseURL
     // - plane.workspaceSlug
     // - keychain: service=PlaneMobile account=apiKey
-    let defaults = UserDefaults.standard
     guard profiles.isEmpty else { return }
 
     let legacyBase = defaults.string(forKey: "plane.baseURL")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

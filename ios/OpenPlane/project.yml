@@ -46,3 +46,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openplane.OpenPlaneUITests
+
+schemes:
+  OpenPlane:
+    build:
+      targets:
+        OpenPlane: all
+    test:
+      targets:
+        - OpenPlaneTests
+        - OpenPlaneUITests

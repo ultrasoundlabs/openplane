@@ -17,6 +17,7 @@
 		2165FB340C1FCBAE505B3581 /* UIStubServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61860E448E73431D6A61AA14 /* UIStubServer.swift */; };
 		26B9556DFBE3E300642D4263 /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A8959552D3FE72B94835ADF /* ProfilesView.swift */; };
 		27FEC09E64BE65522F15CCE5 /* user_me.json in Resources */ = {isa = PBXBuildFile; fileRef = 1C532F45DB8950C5BA8416EC /* user_me.json */; };
+		29BAA3D45CD1BA1F48187F0E /* OpenPlaneRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D9F162F7F808C641C5918D3 /* OpenPlaneRuntime.swift */; };
 		2BF21D468E2B101F185D63CF /* OpenPlaneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 685E70E9593BC842BFF1457D /* OpenPlaneApp.swift */; };
 		2C188690FE684F4787F6AE77 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDE4281E1EA6F41DB106CE0C /* Models.swift */; };
 		3587620EBBCA797B9F31EFE1 /* user_me.json in Resources */ = {isa = PBXBuildFile; fileRef = DB6D76AA63A04E11A724E81A /* user_me.json */; };
@@ -109,6 +110,7 @@
 		6C3E634B0A5A166FB869E908 /* PlaneWorkItemDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaneWorkItemDecodingTests.swift; sourceTree = "<group>"; };
 		767E4C902653F514CE79C283 /* MultiSelectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiSelectListView.swift; sourceTree = "<group>"; };
 		7BFB55628D76D1639812A53F /* TestClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestClientProvider.swift; sourceTree = "<group>"; };
+		7D9F162F7F808C641C5918D3 /* OpenPlaneRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenPlaneRuntime.swift; sourceTree = "<group>"; };
 		7F7ACF1EBB74E8BEA699A3E2 /* MockURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockURLProtocol.swift; sourceTree = "<group>"; };
 		85885DE604A0950B3D3BF122 /* ProfilesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilesStore.swift; sourceTree = "<group>"; };
 		86827552E9FAB98FE405719E /* PlaneAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaneAPIClient.swift; sourceTree = "<group>"; };
@@ -257,6 +259,7 @@
 			isa = PBXGroup;
 			children = (
 				8ED05C5EBA608EBE8A7E14C7 /* Keychain.swift */,
+				7D9F162F7F808C641C5918D3 /* OpenPlaneRuntime.swift */,
 				31224D54EA28DB03D372164C /* OpenPlaneStubURLProtocol.swift */,
 				4E0893B5E5384E38253D4933 /* UserDefaultsSecretStore.swift */,
 			);
@@ -484,6 +487,7 @@
 				4C781561811599F6A7230D5B /* NetworkMonitor.swift in Sources */,
 				7227F68E22189A2023DF252A /* OfflineBanner.swift in Sources */,
 				2BF21D468E2B101F185D63CF /* OpenPlaneApp.swift in Sources */,
+				29BAA3D45CD1BA1F48187F0E /* OpenPlaneRuntime.swift in Sources */,
 				97A7EFC291A5067E501A0AF4 /* OpenPlaneStubURLProtocol.swift in Sources */,
 				9A24B6489FCB15863E8081D2 /* PlaneAPIClient.swift in Sources */,
 				AF1270C2FDB5DB64245B0F6A /* PlaneAPIClientProviding.swift in Sources */,

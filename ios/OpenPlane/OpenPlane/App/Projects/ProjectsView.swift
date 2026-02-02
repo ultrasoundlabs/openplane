@@ -12,7 +12,7 @@ struct ProjectsView: View {
         ProgressView("Loading projects…")
       } else if let error = session.lastError, session.projects.isEmpty {
         ErrorStateView(title: "Couldn’t load projects", message: error.userFacingMessage) {
-          Task { await session.loadProjects() }
+          Task { await session.loadProjects(force: true) }
         }
       } else if session.projects.isEmpty {
         ContentUnavailableView("No projects found", systemImage: "square.grid.2x2")
@@ -40,14 +40,14 @@ struct ProjectsView: View {
         .navigationDestination(for: PlaneProject.self) { project in
           ProjectIssuesView(project: project)
         }
-        .refreshable { await session.loadProjects() }
+        .refreshable { await session.loadProjects(force: true) }
       }
     }
     .navigationTitle("Projects")
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Button {
-          Task { await session.loadProjects() }
+          Task { await session.loadProjects(force: true) }
         } label: {
           Image(systemName: "arrow.clockwise")
         }
@@ -65,9 +65,7 @@ struct ProjectsView: View {
       }
     }
     .task {
-      if session.projects.isEmpty {
-        await session.loadProjects()
-      }
+      await session.loadProjects(force: false)
     }
   }
 }

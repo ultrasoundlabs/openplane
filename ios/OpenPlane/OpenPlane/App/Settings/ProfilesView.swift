@@ -98,6 +98,22 @@ struct ProfilesView: View {
       Section("Appearance") {
         Toggle("Compact rows", isOn: $preferences.compactRows)
       }
+
+      Section("Refresh") {
+        Toggle("Auto refresh", isOn: $preferences.autoRefreshEnabled)
+        if preferences.autoRefreshEnabled {
+          Picker("Interval", selection: $preferences.autoRefreshIntervalSeconds) {
+            Text("30s").tag(30.0)
+            Text("1m").tag(60.0)
+            Text("2m").tag(120.0)
+            Text("5m").tag(300.0)
+          }
+          .pickerStyle(.menu)
+        }
+        Text("Cached data shows immediately; the app refreshes automatically while you’re viewing lists and when returning to the foreground.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
     }
     .navigationTitle("Settings")
     .sheet(isPresented: $isPresentingNew) {

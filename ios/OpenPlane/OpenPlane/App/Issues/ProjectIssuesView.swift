@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ProjectIssuesView: View {
   @EnvironmentObject private var session: SessionStore
+  @EnvironmentObject private var preferences: AppPreferences
+  @EnvironmentObject private var networkMonitor: NetworkMonitor
   let project: PlaneProject
 
   @State private var isPresentingCreate = false
@@ -26,11 +28,11 @@ struct ProjectIssuesView: View {
             ContentUnavailableView("No results", systemImage: "magnifyingglass", description: Text("Try a different search."))
           }
         }
-      } else if session.isLoadingWorkItems(for: project.id) && session.workItemsByProject[project.id]?.isEmpty != false {
+      } else if isLoadingInitialPage {
         ProgressView("Loading work items…")
-      } else if let error = session.lastError, (session.workItemsByProject[project.id] ?? []).isEmpty {
+      } else if let error = session.lastErrorByKey[sessionWorkItemsKey], (session.workItemsByProject[project.id] ?? []).isEmpty {
         ErrorStateView(title: "Couldn’t load work items", message: error.userFacingMessage) {
-          Task { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly) }
+          Task { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: false) }
         }
       } else {
         List {
@@ -45,9 +47,9 @@ struct ProjectIssuesView: View {
             }
           }
 
-          if session.workItemsMeta(forKey: sessionWorkItemsKey).isLoading {
+          if session.workItemsMeta(forKey: sessionWorkItemsKey).isLoading || session.workItemsMeta(forKey: sessionWorkItemsKey).isRefreshing {
             HStack { Spacer(); ProgressView(); Spacer() }
-          } else if session.workItemsMeta(forKey: sessionWorkItemsKey).hasMore {
+          } else if session.workItemsMeta(forKey: sessionWorkItemsKey).hasMore, hasLoadedOnceForKey {
             HStack {
               Spacer()
               Button("Load more") {
@@ -70,7 +72,7 @@ struct ProjectIssuesView: View {
         .navigationDestination(for: PlaneWorkItem.self) { item in
           WorkItemDetailView(project: project, itemID: item.id)
         }
-        .refreshable { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly) }
+        .refreshable { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: false) }
       }
     }
     .navigationTitle(project.name)
@@ -105,15 +107,24 @@ struct ProjectIssuesView: View {
         .environmentObject(session)
       }
     }
-    .task {
+    .task(id: project.id) {
       session.selectedProject = project
       session.hydrateProjectCaches(project: project)
       if session.statesByProject[project.id] == nil { await session.loadStates(project: project) }
-      if session.labelsByProject[project.id] == nil { await session.loadLabels(project: project) }
-      if session.workItemTypesByProject[project.id] == nil { await session.loadWorkItemTypes(project: project) }
 
-      if session.workItemsByProject[project.id] == nil || session.workItemsByProject[project.id]?.isEmpty == true {
-        await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly)
+      await autoLoadIfNeeded()
+    }
+    .task(id: autoRefreshTaskID) {
+      guard preferences.autoRefreshEnabled else { return }
+      while !Task.isCancelled {
+        let interval = max(30, preferences.autoRefreshIntervalSeconds)
+        try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+        guard !Task.isCancelled else { return }
+        guard networkMonitor.isOnline else { continue }
+        guard !isSearchMode else { continue }
+        // Avoid stacking refreshes.
+        if session.workItemsMeta(forKey: sessionWorkItemsKey).isLoading { continue }
+        await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: false)
       }
     }
     .searchable(text: $searchText, prompt: "Search work items")
@@ -121,15 +132,15 @@ struct ProjectIssuesView: View {
       Task { await runSearch(query: newValue) }
     }
     .onChange(of: mineOnly) { _, _ in
-      Task { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly) }
+      Task { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: true) }
     }
     .onChange(of: selectedStateID) { _, _ in
-      Task { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly) }
+      Task { await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: true) }
     }
   }
 
   private var workItems: [PlaneWorkItem] {
-    session.workItemsByProject[project.id] ?? []
+    session.workItemsByKey[sessionWorkItemsKey] ?? []
   }
 
   private var sessionWorkItemsKey: String {
@@ -159,8 +170,37 @@ struct ProjectIssuesView: View {
     searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
   }
 
+  private var isLoadingInitialPage: Bool {
+    let meta = session.workItemsMeta(forKey: sessionWorkItemsKey)
+    let hasItems = (session.workItemsByProject[project.id] ?? []).isEmpty == false
+    return !hasItems && (meta.isLoading || meta.isRefreshing || session.isLoadingWorkItems(for: project.id))
+  }
+
   private var lastRefreshedText: String? {
     guard let date = session.lastRefreshed(forKey: sessionWorkItemsKey) else { return nil }
     return "Updated \(date.formatted(.relative(presentation: .named)))"
+  }
+
+  private var hasLoadedOnceForKey: Bool {
+    session.lastRefreshed(forKey: sessionWorkItemsKey) != nil
+  }
+
+  private func autoLoadIfNeeded() async {
+    let hasData = (session.workItemsByProject[project.id] ?? []).isEmpty == false
+    if !hasData {
+      await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: true)
+      return
+    }
+
+    // Stale-while-revalidate: keep cached items visible, refresh in background.
+    if let last = session.lastRefreshed(forKey: sessionWorkItemsKey),
+       Date().timeIntervalSince(last) >= CacheTTL.workItems {
+      await session.refreshWorkItems(project: project, stateID: selectedStateID, mineOnly: mineOnly, replaceExisting: false)
+    }
+  }
+
+  private var autoRefreshTaskID: String {
+    // Restart the loop when the project or filter changes.
+    "\(project.id)|\(selectedStateID ?? "")|\(mineOnly ? "mine" : "all")"
   }
 }

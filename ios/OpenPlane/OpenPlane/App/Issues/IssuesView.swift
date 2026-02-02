@@ -22,13 +22,36 @@ struct IssuesView: View {
       .padding(.horizontal)
       .padding(.top, 8)
 
+      if mode == .project {
+        HStack {
+          Text("Project")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+          Spacer()
+          Picker("Project", selection: selectedProjectID) {
+            Text("Select…").tag(Optional<String>.none)
+            ForEach(session.projects) { project in
+              Text("\(project.name) (\(project.identifier))").tag(Optional(project.id))
+            }
+          }
+          .pickerStyle(.menu)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+      }
+
       Group {
         switch mode {
         case .project:
-          if session.selectedProject == nil {
-            ContentUnavailableView("Pick a project", systemImage: "square.grid.2x2", description: Text("Choose a project from the Projects tab to view its work items here."))
+          if !session.isConfigured {
+            ContentUnavailableView("Not configured", systemImage: "gear", description: Text("Add a Plane profile in Settings."))
+          } else if session.projects.isEmpty {
+            ProgressView("Loading projects…")
+          } else if let project = session.selectedProject {
+            ProjectIssuesView(project: project)
+              .id(project.id)
           } else {
-            ProjectIssuesView(project: session.selectedProject!)
+            ContentUnavailableView("Select a project", systemImage: "square.grid.2x2", description: Text("Pick a project above to view its work items."))
           }
         case .myWork:
           MyWorkView()
@@ -37,5 +60,21 @@ struct IssuesView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .navigationTitle("Work")
+    .task {
+      if session.isConfigured, session.projects.isEmpty {
+        await session.loadProjects(force: false)
+      }
+    }
+  }
+
+  private var selectedProjectID: Binding<String?> {
+    Binding(
+      get: { session.selectedProject?.id },
+      set: { id in
+        session.selectedProject = id.flatMap { pid in
+          session.projects.first(where: { $0.id == pid })
+        }
+      }
+    )
   }
 }

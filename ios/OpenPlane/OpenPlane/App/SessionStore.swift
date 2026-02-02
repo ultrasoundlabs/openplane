@@ -10,6 +10,7 @@ final class SessionStore: ObservableObject {
   @Published var selectedProject: PlaneProject?
 
   @Published private(set) var workItemsByProject: [String: [PlaneWorkItem]] = [:]
+  @Published private(set) var workItemsByKey: [String: [PlaneWorkItem]] = [:]
   @Published private(set) var workItemsMetaByKey: [String: WorkItemsMeta] = [:]
   @Published private(set) var lastRefreshedByKey: [String: Date] = [:]
   @Published private(set) var statesByProject: [String: [PlaneState]] = [:]
@@ -18,6 +19,7 @@ final class SessionStore: ObservableObject {
   @Published private(set) var membersByWorkspace: [String: [PlaneMember]] = [:]
 
   @Published private(set) var lastError: PlaneAPIError?
+  @Published private(set) var lastErrorByKey: [String: PlaneAPIError] = [:]
 
   private var loadingProjects = false
   private var loadingWorkItems: Set<String> = []
@@ -25,6 +27,7 @@ final class SessionStore: ObservableObject {
   private var loadingLabels: Set<String> = []
   private var loadingTypes: Set<String> = []
   private var loadingMembers: Set<String> = []
+  private var activeWorkItemsKeyByProject: [String: String] = [:]
 
   private let profiles: ProfilesStore
   private let cache: PlaneCacheStore
@@ -58,8 +61,7 @@ final class SessionStore: ObservableObject {
       let (api, profile) = try apiClient()
       currentProfile = profile
       currentUser = try await api.getCurrentUser()
-      await loadMembers()
-      await loadProjects()
+      await loadProjects(force: false)
     } catch {
       let apiError = error as? PlaneAPIError ?? PlaneAPIError.unknown(error)
       lastError = apiError
@@ -78,35 +80,41 @@ final class SessionStore: ObservableObject {
     return user
   }
 
-  func loadProjects() async {
+  func loadProjects(force: Bool = false) async {
     guard isConfigured else { return }
     guard !loadingProjects else { return }
+    if !force, !shouldRefresh(key: "projects", ttl: CacheTTL.projects) {
+      return
+    }
     loadingProjects = true
     defer { loadingProjects = false }
     do {
       lastError = nil
+      lastErrorByKey["projects"] = nil
       let (api, profile) = try apiClient()
       projects = try await api.listProjects(workspaceSlug: profile.workspaceSlug)
       cache.saveProjects(projects, profileID: profile.id)
       lastRefreshedByKey["projects"] = Date()
-      if selectedProject == nil {
-        selectedProject = projects.first
-      }
     } catch {
       lastError = error as? PlaneAPIError ?? PlaneAPIError.unknown(error)
+      lastErrorByKey["projects"] = lastError
     }
   }
 
   func loadWorkItems(project: PlaneProject) async {
-    await refreshWorkItems(project: project, stateID: nil, mineOnly: false)
+    await refreshWorkItems(project: project, stateID: nil, mineOnly: false, replaceExisting: false)
   }
 
-  func refreshWorkItems(project: PlaneProject, stateID: String?, mineOnly: Bool) async {
+  func refreshWorkItems(project: PlaneProject, stateID: String?, mineOnly: Bool, replaceExisting: Bool) async {
     guard isConfigured else { return }
     let assigneeID = mineOnly ? currentUser?.id : nil
     let key = workItemsKey(projectID: project.id, stateID: stateID, assigneeID: assigneeID)
-    workItemsByProject[project.id] = []
-    workItemsMetaByKey[key] = WorkItemsMeta(offset: 0, pageSize: 50, hasMore: true, isLoading: false)
+    activeWorkItemsKeyByProject[project.id] = key
+    if replaceExisting {
+      workItemsByProject[project.id] = []
+      workItemsByKey[key] = []
+    }
+    workItemsMetaByKey[key] = WorkItemsMeta(offset: 0, pageSize: 50, hasMore: true, isLoading: false, isRefreshing: !replaceExisting)
     await loadMoreWorkItems(project: project, stateID: stateID, mineOnly: mineOnly)
   }
 
@@ -114,35 +122,74 @@ final class SessionStore: ObservableObject {
     guard isConfigured else { return }
     let assigneeID = mineOnly ? currentUser?.id : nil
     let key = workItemsKey(projectID: project.id, stateID: stateID, assigneeID: assigneeID)
+    // Pagination should never "take over" the active filter for a project.
+    // Only explicit refreshes (triggered by user intent, filter changes, or initial loads)
+    // should set the active key. Otherwise, an in-flight "load more" from an older filter can
+    // incorrectly flip the active key and make new results look stale (or vice versa).
+    if let active = activeWorkItemsKeyByProject[project.id], active != key { return }
+    if activeWorkItemsKeyByProject[project.id] == nil {
+      activeWorkItemsKeyByProject[project.id] = key
+    }
     var meta = workItemsMetaByKey[key] ?? WorkItemsMeta()
     guard !meta.isLoading, meta.hasMore else { return }
     meta.isLoading = true
     workItemsMetaByKey[key] = meta
+    loadingWorkItems.insert(project.id)
     do {
       lastError = nil
+      lastErrorByKey[key] = nil
       let (api, profile) = try apiClient()
       let offset = meta.offset
       let pageSize = meta.pageSize
-      let items = try await api.listWorkItems(
+      let fetched = try await api.listWorkItems(
         workspaceSlug: profile.workspaceSlug,
         projectID: project.id,
         filter: .init(stateID: stateID, assigneeID: assigneeID, search: nil, limit: pageSize, offset: offset)
       )
-      var current = workItemsByProject[project.id] ?? []
-      current.append(contentsOf: items)
+
+      // If the user changed filters while this request was in-flight, ignore stale results.
+      if activeWorkItemsKeyByProject[project.id] != key {
+        var meta = workItemsMetaByKey[key] ?? WorkItemsMeta()
+        meta.isLoading = false
+        meta.isRefreshing = false
+        workItemsMetaByKey[key] = meta
+        loadingWorkItems.remove(project.id)
+        return
+      }
+
+      // Defensive: some Plane deployments appear to ignore `state`/`assignee` query params.
+      // Enforce the currently-selected filter client-side so the UI stays correct.
+      let items = Self.filterWorkItemsClientSide(fetched, stateID: stateID, assigneeID: assigneeID)
+
+      var current = workItemsByKey[key] ?? []
+      if meta.isRefreshing, offset == 0 {
+        current = items
+      } else {
+        current.append(contentsOf: items)
+      }
+      current = dedupeWorkItemsPreservingOrder(current)
+      workItemsByKey[key] = current
       workItemsByProject[project.id] = current
 
-      meta.offset = current.count
-      meta.hasMore = items.count == pageSize
+      // Offset is the server-side pagination cursor ("how many results we've asked the server to skip").
+      // When we enforce filters client-side, `current.count` can be smaller than `offset + fetched.count`,
+      // which would cause overlapping pages and confusing UI behavior.
+      meta.offset = offset + fetched.count
+      meta.hasMore = fetched.count == pageSize
       meta.isLoading = false
+      meta.isRefreshing = false
       workItemsMetaByKey[key] = meta
+      loadingWorkItems.remove(project.id)
       cache.saveWorkItems(current, profileID: profile.id, projectID: project.id, filterKey: key)
       lastRefreshedByKey[key] = Date()
     } catch {
       var meta = workItemsMetaByKey[key] ?? WorkItemsMeta()
       meta.isLoading = false
+      meta.isRefreshing = false
       workItemsMetaByKey[key] = meta
       lastError = error as? PlaneAPIError ?? PlaneAPIError.unknown(error)
+      lastErrorByKey[key] = lastError
+      loadingWorkItems.remove(project.id)
     }
   }
 
@@ -215,7 +262,11 @@ final class SessionStore: ObservableObject {
   }
 
   func workItem(projectID: String, itemID: String) -> PlaneWorkItem? {
-    workItemsByProject[projectID]?.first(where: { $0.id == itemID })
+    // Prefer whichever filter is currently active for the project.
+    if let key = activeWorkItemsKeyByProject[projectID], let found = workItemsByKey[key]?.first(where: { $0.id == itemID }) {
+      return found
+    }
+    return workItemsByProject[projectID]?.first(where: { $0.id == itemID })
   }
 
   func createWorkItem(project: PlaneProject, body: CreateWorkItemRequest) async throws -> PlaneWorkItem {
@@ -267,9 +318,11 @@ final class SessionStore: ObservableObject {
     let (api, profile) = try apiClient()
     // No dedicated "assigned to me" workspace endpoint in the provided docs; do per-project fetch with `assignee`.
     // Throttle concurrency to avoid rate limiting.
-    let projects = self.projects
+    var projects = self.projects
     if projects.isEmpty {
-      _ = try await api.listProjects(workspaceSlug: profile.workspaceSlug)
+      let fetched = try await api.listProjects(workspaceSlug: profile.workspaceSlug)
+      self.projects = fetched
+      projects = fetched
     }
 
     let semaphore = AsyncSemaphore(value: 4)
@@ -304,7 +357,6 @@ final class SessionStore: ObservableObject {
     guard let selectedID = profiles.selectedProfileID else { return }
     if let cached = cache.loadProjects(profileID: selectedID, maxAge: CacheTTL.projects) {
       projects = cached.value
-      selectedProject = cached.value.first
       lastRefreshedByKey["projects"] = cached.savedAt
     }
     // Per-project caches are loaded on demand when navigating.
@@ -328,7 +380,11 @@ final class SessionStore: ObservableObject {
     if workItemsByProject[project.id] == nil,
        let cached = cache.loadWorkItems(profileID: selectedID, projectID: project.id, filterKey: allKey, maxAge: CacheTTL.workItems) {
       workItemsByProject[project.id] = cached.value
+      workItemsByKey[allKey] = cached.value
       lastRefreshedByKey[allKey] = cached.savedAt
+      if workItemsMetaByKey[allKey] == nil {
+        workItemsMetaByKey[allKey] = WorkItemsMeta(offset: cached.value.count, pageSize: 50, hasMore: true, isLoading: false, isRefreshing: false)
+      }
     }
   }
 
@@ -337,6 +393,34 @@ final class SessionStore: ObservableObject {
     let a = assigneeID ?? ""
     return "workItems|project=\(projectID)|state=\(s)|assignee=\(a)"
   }
+
+  private func shouldRefresh(key: String, ttl: TimeInterval) -> Bool {
+    guard let last = lastRefreshedByKey[key] else { return true }
+    return Date().timeIntervalSince(last) >= ttl
+  }
+
+  private func dedupeWorkItemsPreservingOrder(_ items: [PlaneWorkItem]) -> [PlaneWorkItem] {
+    var seen: Set<String> = []
+    var out: [PlaneWorkItem] = []
+    out.reserveCapacity(items.count)
+    for item in items {
+      if seen.insert(item.id).inserted {
+        out.append(item)
+      }
+    }
+    return out
+  }
+
+  static func filterWorkItemsClientSide(_ items: [PlaneWorkItem], stateID: String?, assigneeID: String?) -> [PlaneWorkItem] {
+    var out = items
+    if let stateID {
+      out = out.filter { $0.stateID == stateID }
+    }
+    if let assigneeID {
+      out = out.filter { ($0.assigneeIDs ?? []).contains(assigneeID) }
+    }
+    return out
+  }
 }
 
 struct WorkItemsMeta: Hashable {
@@ -344,6 +428,7 @@ struct WorkItemsMeta: Hashable {
   var pageSize: Int = 50
   var hasMore: Bool = true
   var isLoading: Bool = false
+  var isRefreshing: Bool = false
 }
 
 enum CacheTTL {

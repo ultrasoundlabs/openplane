@@ -168,6 +168,7 @@ struct WorkItemDetailView: View {
       if session.labelsByProject[project.id] == nil { await session.loadLabels(project: project) }
       if session.workItemTypesByProject[project.id] == nil { await session.loadWorkItemTypes(project: project) }
       if session.currentUser == nil { await session.bootstrap() }
+      if session.membersByWorkspace[session.currentProfile?.workspaceSlug ?? ""] == nil { await session.loadMembers() }
 
       if item == nil {
         await load()

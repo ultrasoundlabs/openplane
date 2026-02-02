@@ -31,10 +31,10 @@ final class SessionStoreTests: XCTestCase {
   }
 
   func testBootstrapLoadsUserThenProjects() async throws {
-    UserDefaults.standard.removeObject(forKey: "plane.selectedProfileID")
-    UserDefaults.standard.removeObject(forKey: "plane.profiles")
-    Keychain.shared.deleteAll(service: "OpenPlane")
-    Keychain.shared.deleteAll(service: "PlaneMobile")
+    // Use an isolated defaults suite so tests don't pollute local app data.
+    let suiteName = "OpenPlaneTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
 
     let session = MockURLSessionFactory.make()
     let provider = TestClientProvider(session: session)
@@ -45,7 +45,7 @@ final class SessionStoreTests: XCTestCase {
     }
 
     // Seed a profile + token into storage via ProfilesStore API.
-    let profiles = ProfilesStore(secretStore: InMemorySecretStore())
+    let profiles = ProfilesStore(defaults: defaults, secretStore: InMemorySecretStore())
     let profile = PlaneProfile(
       name: "Test",
       apiBaseURLString: "https://example.test",
@@ -88,5 +88,98 @@ final class SessionStoreTests: XCTestCase {
     XCTAssertEqual(store.currentUser?.id, "u1")
     XCTAssertEqual(store.projects.count, 1)
     XCTAssertEqual(store.projects.first?.id, "p1")
+  }
+
+  func testRefreshWorkItemsEnforcesStateFilterClientSideWhenServerIgnoresQuery() async throws {
+    let suiteName = "OpenPlaneTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let session = MockURLSessionFactory.make()
+    let provider = TestClientProvider(session: session)
+
+    let recorder = RequestRecorder()
+    MockURLProtocol.onRequest = { request in recorder.record(request) }
+
+    let profiles = ProfilesStore(defaults: defaults, secretStore: InMemorySecretStore())
+    let profile = PlaneProfile(
+      name: "Test",
+      apiBaseURLString: "https://example.test",
+      webBaseURLString: "https://example.test",
+      workspaceSlug: "my-team",
+      workItemPathTemplate: "/{workspaceSlug}/work-items/{identifier}"
+    )
+    try profiles.upsertProfile(profile, apiKey: "plane_api_test")
+    profiles.selectProfile(profile)
+
+    let store = SessionStore(profiles: profiles, clientProvider: provider)
+
+    MockURLProtocol.handler = { request in
+      let path = request.url?.path ?? ""
+      let normalized = path.hasSuffix("/") ? path : path + "/"
+      if normalized == "/api/v1/users/me/" { return .init(body: FixtureLoader.data("user_me.json")) }
+      if normalized == "/api/v1/workspaces/my-team/projects/" { return .init(body: FixtureLoader.data("projects.json")) }
+      if normalized == "/api/v1/workspaces/my-team/projects/p1/work-items/" {
+        // Return a mixed page regardless of query params. SessionStore should enforce filters client-side.
+        return .init(body: FixtureLoader.data("work_items_page.json"))
+      }
+      return .init(statusCode: 404, body: Data("{\"detail\":\"not found\"}".utf8))
+    }
+
+    await store.bootstrap()
+    let project = try XCTUnwrap(store.projects.first)
+
+    await store.refreshWorkItems(project: project, stateID: "s1", mineOnly: false, replaceExisting: true)
+
+    let key = "workItems|project=\(project.id)|state=s1|assignee="
+    let filtered = store.workItemsByKey[key] ?? []
+    XCTAssertEqual(filtered.map(\.id), ["w1"], "filtered list should only contain items in the selected state\nrequests:\n\(recorder.dump())")
+  }
+
+  func testLoadMoreWorkItemsDoesNotSendRequestForInactiveFilter() async throws {
+    let suiteName = "OpenPlaneTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let session = MockURLSessionFactory.make()
+    let provider = TestClientProvider(session: session)
+
+    let recorder = RequestRecorder()
+    MockURLProtocol.onRequest = { request in recorder.record(request) }
+
+    let profiles = ProfilesStore(defaults: defaults, secretStore: InMemorySecretStore())
+    let profile = PlaneProfile(
+      name: "Test",
+      apiBaseURLString: "https://example.test",
+      webBaseURLString: "https://example.test",
+      workspaceSlug: "my-team",
+      workItemPathTemplate: "/{workspaceSlug}/work-items/{identifier}"
+    )
+    try profiles.upsertProfile(profile, apiKey: "plane_api_test")
+    profiles.selectProfile(profile)
+
+    let store = SessionStore(profiles: profiles, clientProvider: provider)
+
+    MockURLProtocol.handler = { request in
+      let path = request.url?.path ?? ""
+      let normalized = path.hasSuffix("/") ? path : path + "/"
+      if normalized == "/api/v1/users/me/" { return .init(body: FixtureLoader.data("user_me.json")) }
+      if normalized == "/api/v1/workspaces/my-team/projects/" { return .init(body: FixtureLoader.data("projects.json")) }
+      if normalized == "/api/v1/workspaces/my-team/projects/p1/work-items/" { return .init(body: FixtureLoader.data("work_items_page.json")) }
+      return .init(statusCode: 404, body: Data("{\"detail\":\"not found\"}".utf8))
+    }
+
+    await store.bootstrap()
+    let project = try XCTUnwrap(store.projects.first)
+
+    // Establish an active filter with state=s1.
+    await store.refreshWorkItems(project: project, stateID: "s1", mineOnly: false, replaceExisting: true)
+    let before = recorder.dump()
+
+    // Attempt to load more for a different state. This should return early and not hit the network.
+    await store.loadMoreWorkItems(project: project, stateID: "s2", mineOnly: false)
+    let after = recorder.dump()
+
+    XCTAssertEqual(after, before, "loadMoreWorkItems for an inactive filter should not send requests")
   }
 }

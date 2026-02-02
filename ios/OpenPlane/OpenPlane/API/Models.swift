@@ -344,18 +344,81 @@ enum PlaneHTML {
 
   static func plainText(_ html: String) -> String {
     // Best-effort conversion for displaying `description_html` in list/detail views.
-    guard let data = html.data(using: .utf8) else { return html }
-    if let attributed = try? NSAttributedString(
-      data: data,
-      options: [
-        .documentType: NSAttributedString.DocumentType.html,
-        .characterEncoding: String.Encoding.utf8.rawValue,
-      ],
-      documentAttributes: nil
-    ) {
-      return attributed.string
+    // Avoid NSAttributedString(html:) here: it can be expensive and has been observed to
+    // trigger UIKit/SwiftUI collection-view assertion crashes under load.
+    var s = html
+
+    // Newlines for common block separators.
+    s = s.replacingOccurrences(of: "(?i)<br\\s*/?>", with: "\n", options: .regularExpression)
+    s = s.replacingOccurrences(of: "(?i)</(p|div|li|ul|ol|h1|h2|h3|h4|h5|h6)>", with: "\n", options: .regularExpression)
+
+    // Strip remaining tags.
+    s = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+
+    // Decode HTML entities (best-effort, supports common + numeric entities).
+    s = decodeHTMLEntities(s)
+
+    // Normalize whitespace.
+    s = s.replacingOccurrences(of: "\r\n", with: "\n")
+    s = s.replacingOccurrences(of: "\r", with: "\n")
+    s = s.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+    return s.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func decodeHTMLEntities(_ input: String) -> String {
+    var s = input
+    let common: [String: String] = [
+      "&amp;": "&",
+      "&lt;": "<",
+      "&gt;": ">",
+      "&quot;": "\"",
+      "&#39;": "'",
+      "&apos;": "'",
+      "&nbsp;": " ",
+    ]
+    for (k, v) in common {
+      s = s.replacingOccurrences(of: k, with: v)
     }
-    return html
+
+    // Numeric decimal: &#1234;
+    s = replaceRegexMatches(in: s, pattern: "&#(\\d+);") { groups in
+      guard let dec = Int(groups[0], radix: 10), let scalar = UnicodeScalar(dec) else { return nil }
+      return String(scalar)
+    }
+
+    // Numeric hex: &#x1F600;
+    s = replaceRegexMatches(in: s, pattern: "&#x([0-9A-Fa-f]+);") { groups in
+      guard let hex = Int(groups[0], radix: 16), let scalar = UnicodeScalar(hex) else { return nil }
+      return String(scalar)
+    }
+
+    return s
+  }
+
+  private static func replaceRegexMatches(in input: String, pattern: String, transform: ([String]) -> String?) -> String {
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return input }
+    let ns = input as NSString
+    let matches = regex.matches(in: input, range: NSRange(location: 0, length: ns.length))
+    if matches.isEmpty { return input }
+
+    let out = NSMutableString(string: input)
+    for match in matches.reversed() {
+      var groups: [String] = []
+      if match.numberOfRanges > 1 {
+        for idx in 1..<match.numberOfRanges {
+          let r = match.range(at: idx)
+          if r.location != NSNotFound {
+            groups.append(ns.substring(with: r))
+          } else {
+            groups.append("")
+          }
+        }
+      }
+      if let replacement = transform(groups) {
+        out.replaceCharacters(in: match.range, with: replacement)
+      }
+    }
+    return out as String
   }
 }
 
