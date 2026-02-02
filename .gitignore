@@ -1,0 +1,15 @@
+.DS_Store
+
+# Xcode / Swift
+DerivedData/
+*.xcuserstate
+*.xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.xcuserdatad
+
+# SwiftPM
+.build/
+.swiftpm/
+
