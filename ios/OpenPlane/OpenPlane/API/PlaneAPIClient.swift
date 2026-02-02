@@ -3,6 +3,8 @@ import Foundation
 struct PlaneAPIClient {
   let baseURL: URL
   let apiKey: String
+  let session: URLSession
+  let timeoutSeconds: TimeInterval
 
   private let maxRetries = 3
 
@@ -13,9 +15,11 @@ struct PlaneAPIClient {
     return d
   }()
 
-  init(baseURL: URL, apiKey: String) {
+  init(baseURL: URL, apiKey: String, session: URLSession = .shared, timeoutSeconds: TimeInterval = 20) {
     self.baseURL = baseURL
     self.apiKey = apiKey
+    self.session = session
+    self.timeoutSeconds = timeoutSeconds
   }
 
   func getCurrentUser() async throws -> PlaneUser {
@@ -142,6 +146,7 @@ struct PlaneAPIClient {
 
     var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = request.method
+    urlRequest.timeoutInterval = timeoutSeconds
     urlRequest.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
     urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
     if let body = request.jsonBody {
@@ -151,13 +156,14 @@ struct PlaneAPIClient {
 
     let (data, response): (Data, URLResponse)
     do {
-      (data, response) = try await URLSession.shared.data(for: urlRequest)
+      (data, response) = try await session.data(for: urlRequest)
     } catch {
       if attempt < maxRetries {
-        try await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
+        let delay = backoffDelaySeconds(attempt: attempt, base: 0.5, max: 5.0)
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         return try await sendRaw(request, attempt: attempt + 1)
       }
-      throw PlaneAPIError.unknown(error)
+      throw PlaneAPIError.transport(error, endpoint: PlaneEndpoint(method: request.method, url: url))
     }
     guard let http = response as? HTTPURLResponse else {
       throw PlaneAPIError.invalidResponse
@@ -168,21 +174,21 @@ struct PlaneAPIClient {
     }
 
     if http.statusCode == 429, attempt < maxRetries {
-      let delay = retryDelaySeconds(from: http) ?? min(5.0, pow(2.0, Double(attempt)))
+      let delay = retryDelaySeconds(from: http) ?? backoffDelaySeconds(attempt: attempt, base: 1.0, max: 10.0)
       try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
       return try await sendRaw(request, attempt: attempt + 1)
     }
 
     if (500..<600).contains(http.statusCode), attempt < maxRetries {
-      let delay = min(5.0, pow(2.0, Double(attempt)))
+      let delay = backoffDelaySeconds(attempt: attempt, base: 0.5, max: 5.0)
       try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
       return try await sendRaw(request, attempt: attempt + 1)
     }
 
     if let err = try? decoder.decode(PlaneAPIErrorBody.self, from: data) {
-      throw PlaneAPIError.http(status: http.statusCode, body: err)
+      throw PlaneAPIError.http(status: http.statusCode, body: err, endpoint: PlaneEndpoint(method: request.method, url: url))
     }
-    throw PlaneAPIError.http(status: http.statusCode, body: nil)
+    throw PlaneAPIError.http(status: http.statusCode, body: nil, endpoint: PlaneEndpoint(method: request.method, url: url))
   }
 
   private func retryDelaySeconds(from response: HTTPURLResponse) -> Double? {
@@ -195,6 +201,11 @@ struct PlaneAPIClient {
       return max(0.5, epoch - now)
     }
     return nil
+  }
+
+  private func backoffDelaySeconds(attempt: Int, base: Double, max: Double) -> Double {
+    // Deterministic exponential backoff.
+    min(max, base * pow(2.0, Double(attempt)))
   }
 }
 
@@ -242,17 +253,56 @@ struct PlaneAPIErrorBody: Decodable {
 
 enum PlaneAPIError: Error {
   case invalidResponse
-  case http(status: Int, body: PlaneAPIErrorBody?)
+  case http(status: Int, body: PlaneAPIErrorBody?, endpoint: PlaneEndpoint?)
+  case transport(Error, endpoint: PlaneEndpoint?)
   case unknown(Error)
 
   var userFacingMessage: String {
     switch self {
     case .invalidResponse:
       return "Invalid response from server."
-    case let .http(status, body):
+    case let .http(status, body, _):
+      if status == 401 { return body?.bestMessage ?? "Unauthorized (HTTP 401). Check your Personal Access Token." }
+      if status == 403 { return body?.bestMessage ?? "Forbidden (HTTP 403). Your token may not have access to this workspace." }
+      if status == 404 { return body?.bestMessage ?? "Not found (HTTP 404). Check the workspace slug and base URL." }
       return body?.bestMessage ?? "Request failed (HTTP \(status))."
+    case let .transport(error, _):
+      return error.localizedDescription
     case let .unknown(error):
       return error.localizedDescription
     }
   }
+
+  var isAuthError: Bool {
+    switch self {
+    case let .http(status, _, _):
+      return status == 401 || status == 403
+    default:
+      return false
+    }
+  }
+
+  var diagnostics: String? {
+    switch self {
+    case let .http(status, body, endpoint):
+      var lines: [String] = []
+      if let endpoint { lines.append("\(endpoint.method) \(endpoint.url.absoluteString)") }
+      lines.append("HTTP \(status)")
+      if let msg = body?.bestMessage, !msg.isEmpty { lines.append(msg) }
+      return lines.joined(separator: "\n")
+    case let .transport(error, endpoint):
+      var lines: [String] = []
+      if let endpoint { lines.append("\(endpoint.method) \(endpoint.url.absoluteString)") }
+      lines.append("Transport error")
+      lines.append(error.localizedDescription)
+      return lines.joined(separator: "\n")
+    default:
+      return nil
+    }
+  }
+}
+
+struct PlaneEndpoint: Sendable {
+  let method: String
+  let url: URL
 }

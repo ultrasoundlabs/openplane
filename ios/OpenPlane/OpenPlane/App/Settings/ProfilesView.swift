@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProfilesView: View {
   @EnvironmentObject private var profiles: ProfilesStore
@@ -74,6 +75,13 @@ struct ProfilesView: View {
             Text(result.message)
               .font(.subheadline)
               .foregroundStyle(.secondary)
+
+            if let diagnostics = result.diagnostics, !diagnostics.isEmpty {
+              Button("Copy diagnostics") {
+                UIPasteboard.general.string = diagnostics
+              }
+              .font(.subheadline)
+            }
           }
           .padding(.vertical, 4)
         }
@@ -128,7 +136,7 @@ struct ProfilesView: View {
       testResult = .success(user: user)
     } catch {
       let apiError = error as? PlaneAPIError ?? .unknown(error)
-      testResult = .failure(message: apiError.userFacingMessage)
+      testResult = .failure(message: apiError.userFacingMessage, diagnostics: apiError.diagnostics)
     }
   }
 }
@@ -137,13 +145,14 @@ struct ConnectionTestResult: Hashable, Identifiable {
   let id = UUID()
   let title: String
   let message: String
+  let diagnostics: String?
 
   static func success(user: PlaneUser) -> ConnectionTestResult {
     let who = user.displayName ?? user.email ?? user.id
-    return ConnectionTestResult(title: "Connected", message: "Authenticated as \(who).")
+    return ConnectionTestResult(title: "Connected", message: "Authenticated as \(who).", diagnostics: nil)
   }
 
-  static func failure(message: String) -> ConnectionTestResult {
-    ConnectionTestResult(title: "Failed", message: message)
+  static func failure(message: String, diagnostics: String?) -> ConnectionTestResult {
+    ConnectionTestResult(title: "Failed", message: message, diagnostics: diagnostics)
   }
 }

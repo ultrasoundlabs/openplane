@@ -39,6 +39,12 @@ struct EditProfileView: View {
         Text("For Plane Cloud, API is `https://api.plane.so` and web is `https://app.plane.so`.")
           .font(.footnote)
           .foregroundStyle(.secondary)
+
+        if apiBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("http://") {
+          Label("HTTP URLs are usually blocked by iOS App Transport Security. Prefer HTTPS (reverse proxy/TLS) for self-hosted Plane.", systemImage: "exclamationmark.triangle")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
 
       Section("Deep Links") {
@@ -54,9 +60,15 @@ struct EditProfileView: View {
         SecureField("Personal Access Token", text: $apiKey)
           .textInputAutocapitalization(.never)
           .autocorrectionDisabled()
-        Text("Sent as `X-API-Key`.")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+        if isNew {
+          Text("Sent as `X-API-Key`.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        } else {
+          Text("Sent as `X-API-Key`. Leave blank to keep the existing token.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
     }
     .navigationTitle(isNew ? "New Profile" : "Edit Profile")
@@ -74,12 +86,6 @@ struct EditProfileView: View {
       webBaseURLString = initial.webBaseURLString
       workspaceSlug = initial.workspaceSlug
       workItemPathTemplate = initial.workItemPathTemplate ?? ""
-
-      if !isNew {
-        apiKey = Keychain.shared.read(service: "OpenPlane", account: "apiKey.\(initial.id.uuidString)")
-          ?? Keychain.shared.read(service: "PlaneMobile", account: "apiKey.\(initial.id.uuidString)")
-          ?? ""
-      }
 
       if webBaseURLString.isEmpty {
         webBaseURLString = apiBaseURLString.replacingOccurrences(of: "https://api.plane.so", with: "https://app.plane.so")
@@ -102,7 +108,13 @@ struct EditProfileView: View {
         workspaceSlug: workspaceSlug,
         workItemPathTemplate: workItemPathTemplate.trimmedNonEmpty
       )
-      try onSave(profile, apiKey)
+      let keyToSave: String?
+      if isNew {
+        keyToSave = apiKey
+      } else {
+        keyToSave = apiKey.trimmedNonEmpty
+      }
+      try onSave(profile, keyToSave)
       profiles.selectProfile(profile)
       dismiss()
     } catch {

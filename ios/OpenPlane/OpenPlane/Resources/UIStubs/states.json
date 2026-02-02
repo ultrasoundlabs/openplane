@@ -1,0 +1,5 @@
+[
+  { "id": "s1", "name": "Todo", "color": "#00AAFF", "group": "backlog", "sequence": 1 },
+  { "id": "s2", "name": "In Progress", "color": "#FFAA00", "group": "started", "sequence": 2 }
+]
+

@@ -28,10 +28,12 @@ final class SessionStore: ObservableObject {
 
   private let profiles: ProfilesStore
   private let cache: PlaneCacheStore
+  private let clientProvider: PlaneAPIClientProviding
 
-  init(profiles: ProfilesStore) {
+  init(profiles: ProfilesStore, clientProvider: PlaneAPIClientProviding = DefaultPlaneAPIClientProvider()) {
     self.profiles = profiles
     self.cache = PlaneCacheStore()
+    self.clientProvider = clientProvider
     hydrateFromCache()
   }
 
@@ -46,7 +48,7 @@ final class SessionStore: ObservableObject {
 
   private func apiClient() throws -> (PlaneAPIClient, ValidatedProfile) {
     let profile = try profiles.validatedSelectedProfile()
-    return (PlaneAPIClient(baseURL: profile.apiBaseURL, apiKey: profile.apiKey), profile)
+    return (clientProvider.makeClient(apiBaseURL: profile.apiBaseURL, apiKey: profile.apiKey), profile)
   }
 
   func bootstrap() async {
@@ -59,7 +61,13 @@ final class SessionStore: ObservableObject {
       await loadMembers()
       await loadProjects()
     } catch {
-      lastError = error as? PlaneAPIError ?? PlaneAPIError.unknown(error)
+      let apiError = error as? PlaneAPIError ?? PlaneAPIError.unknown(error)
+      lastError = apiError
+      if apiError.isAuthError {
+        currentUser = nil
+        projects = []
+        selectedProject = nil
+      }
     }
   }
 

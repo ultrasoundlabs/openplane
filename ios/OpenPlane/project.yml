@@ -22,3 +22,27 @@ targets:
         INFOPLIST_FILE: OpenPlane/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  OpenPlaneTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: OpenPlaneTests
+    resources:
+      - path: OpenPlaneTests/Fixtures
+    dependencies:
+      - target: OpenPlane
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openplane.OpenPlaneTests
+
+  OpenPlaneUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: OpenPlaneUITests
+    dependencies:
+      - target: OpenPlane
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openplane.OpenPlaneUITests

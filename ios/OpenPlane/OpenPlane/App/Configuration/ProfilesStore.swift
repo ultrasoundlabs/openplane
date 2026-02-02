@@ -5,10 +5,13 @@ final class ProfilesStore: ObservableObject {
   private static let keychainService = "OpenPlane"
   private static let legacyKeychainService = "PlaneMobile"
 
+  private let secretStore: SecretStoring
+
   @Published private(set) var profiles: [PlaneProfile] = []
   @Published var selectedProfileID: UUID?
 
-  init() {
+  init(secretStore: SecretStoring = Keychain.shared) {
+    self.secretStore = secretStore
     load()
     migrateLegacyIfNeeded()
     if selectedProfileID == nil {
@@ -70,7 +73,7 @@ final class ProfilesStore: ObservableObject {
     if let apiKey {
       let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !trimmedKey.isEmpty else { throw PlaneProfileError.missingAPIKey }
-      _ = Keychain.shared.save(service: Self.keychainService, account: apiKeyAccount(for: updated.id), secret: trimmedKey)
+      _ = secretStore.save(service: Self.keychainService, account: apiKeyAccount(for: updated.id), secret: trimmedKey)
     }
 
     if let index = profiles.firstIndex(where: { $0.id == updated.id }) {
@@ -83,8 +86,8 @@ final class ProfilesStore: ObservableObject {
 
   func deleteProfile(_ profile: PlaneProfile) {
     profiles.removeAll(where: { $0.id == profile.id })
-    Keychain.shared.delete(service: Self.keychainService, account: apiKeyAccount(for: profile.id))
-    Keychain.shared.delete(service: Self.legacyKeychainService, account: apiKeyAccount(for: profile.id))
+    secretStore.delete(service: Self.keychainService, account: apiKeyAccount(for: profile.id))
+    secretStore.delete(service: Self.legacyKeychainService, account: apiKeyAccount(for: profile.id))
     if selectedProfileID == profile.id {
       selectedProfileID = profiles.first?.id
     }
@@ -98,8 +101,8 @@ final class ProfilesStore: ObservableObject {
 
   func clearAllSecrets() {
     for profile in profiles {
-      Keychain.shared.delete(service: Self.keychainService, account: apiKeyAccount(for: profile.id))
-      Keychain.shared.delete(service: Self.legacyKeychainService, account: apiKeyAccount(for: profile.id))
+      secretStore.delete(service: Self.keychainService, account: apiKeyAccount(for: profile.id))
+      secretStore.delete(service: Self.legacyKeychainService, account: apiKeyAccount(for: profile.id))
     }
   }
 
@@ -134,7 +137,7 @@ final class ProfilesStore: ObservableObject {
 
     let legacyBase = defaults.string(forKey: "plane.baseURL")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let legacySlug = defaults.string(forKey: "plane.workspaceSlug")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    let legacyKey = Keychain.shared.read(service: Self.legacyKeychainService, account: "apiKey")?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let legacyKey = secretStore.read(service: Self.legacyKeychainService, account: "apiKey")?.trimmingCharacters(in: .whitespacesAndNewlines)
 
     guard !legacyBase.isEmpty, !legacySlug.isEmpty, let legacyKey, !legacyKey.isEmpty else { return }
 
@@ -149,11 +152,11 @@ final class ProfilesStore: ObservableObject {
 
     profiles = [profile]
     selectedProfileID = profile.id
-    _ = Keychain.shared.save(service: Self.keychainService, account: apiKeyAccount(for: profile.id), secret: legacyKey)
+    _ = secretStore.save(service: Self.keychainService, account: apiKeyAccount(for: profile.id), secret: legacyKey)
 
     defaults.removeObject(forKey: "plane.baseURL")
     defaults.removeObject(forKey: "plane.workspaceSlug")
-    Keychain.shared.delete(service: Self.legacyKeychainService, account: "apiKey")
+    secretStore.delete(service: Self.legacyKeychainService, account: "apiKey")
     save()
   }
 
@@ -162,13 +165,13 @@ final class ProfilesStore: ObservableObject {
   }
 
   private func readAPIKey(profileID: UUID) -> String? {
-    if let key = Keychain.shared.read(service: Self.keychainService, account: apiKeyAccount(for: profileID)) {
+    if let key = secretStore.read(service: Self.keychainService, account: apiKeyAccount(for: profileID)) {
       return key
     }
-    if let key = Keychain.shared.read(service: Self.legacyKeychainService, account: apiKeyAccount(for: profileID)) {
+    if let key = secretStore.read(service: Self.legacyKeychainService, account: apiKeyAccount(for: profileID)) {
       // One-time migration: move into new service.
-      _ = Keychain.shared.save(service: Self.keychainService, account: apiKeyAccount(for: profileID), secret: key)
-      Keychain.shared.delete(service: Self.legacyKeychainService, account: apiKeyAccount(for: profileID))
+      _ = secretStore.save(service: Self.keychainService, account: apiKeyAccount(for: profileID), secret: key)
+      secretStore.delete(service: Self.legacyKeychainService, account: apiKeyAccount(for: profileID))
       return key
     }
     return nil

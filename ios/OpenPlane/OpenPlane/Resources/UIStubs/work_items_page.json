@@ -1,0 +1,59 @@
+{
+  "next_cursor": "",
+  "prev_cursor": "",
+  "next_page_results": false,
+  "prev_page_results": false,
+  "count": 2,
+  "total_pages": 1,
+  "total_results": 2,
+  "results": [
+    {
+      "id": "w1",
+      "name": "Fix bug",
+      "identifier": "PROJ1-1",
+      "sequence_id": 1,
+      "description_stripped": "Steps to reproduce",
+      "priority": "high",
+      "state": {
+        "id": "s1",
+        "name": "Todo",
+        "color": "#00AAFF",
+        "group": "backlog",
+        "sequence": 1
+      },
+      "assignees": [
+        {
+          "id": "u1",
+          "first_name": "User",
+          "last_name": "One",
+          "email": "user@example.com",
+          "display_name": "User One",
+          "role": 15
+        }
+      ],
+      "labels": [
+        { "id": "l1", "name": "bug", "color": "#FF3355" }
+      ],
+      "type": { "id": "t1", "name": "Bug" },
+      "start_date": "2026-01-01",
+      "target_date": "2026-01-10",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-02T00:00:00Z"
+    },
+    {
+      "id": "w2",
+      "name": "Ship feature",
+      "identifier": "PROJ1-2",
+      "sequence_id": 2,
+      "description_stripped": "",
+      "priority": "none",
+      "state": "s2",
+      "assignees": ["u1"],
+      "labels": [],
+      "type": "t1",
+      "created_at": "2026-01-03T00:00:00Z",
+      "updated_at": "2026-01-04T00:00:00Z"
+    }
+  ]
+}
+
