@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -81,7 +81,7 @@
 
 /* Begin PBXFileReference section */
 		008230CC0FA0E4F291BF5919 /* work_item_detail.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = work_item_detail.json; sourceTree = "<group>"; };
-		012B51088B9985613B833C69 /* OpenPlane.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenPlane.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		012B51088B9985613B833C69 /* OpenPlane.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenPlane.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C9BCFAE0F37DB96C7B64EC8 /* work_item_detail.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = work_item_detail.json; sourceTree = "<group>"; };
 		0DC383721357006C67E68D00 /* IssuesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IssuesView.swift; sourceTree = "<group>"; };
 		12AC1B267CAAFF345CAFB8C5 /* ProjectIssuesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIssuesView.swift; sourceTree = "<group>"; };
@@ -405,9 +405,6 @@
 					91983E41FF9BFC9A3B44F626 = {
 						DevelopmentTeam = "";
 					};
-					9F4B0F7168E3B72A9B590CDF = {
-						DevelopmentTeam = "";
-					};
 				};
 			};
 			buildConfigurationList = D89A47503544672304FE5B78 /* Build configuration list for PBXProject "OpenPlane" */;
@@ -420,7 +417,6 @@
 			);
 			mainGroup = F6989E20AA89A879511EDBA7;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -545,6 +541,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 2YKPY846FK;
 				INFOPLIST_FILE = OpenPlane/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -562,6 +559,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 2YKPY846FK;
 				INFOPLIST_FILE = OpenPlane/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
