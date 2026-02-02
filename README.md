@@ -21,4 +21,9 @@ Plane's official mobile app is closed-source and [only works with the Commercial
 
 ## Note
 
-This app is fully vibecoded. [There are extensive E2E tests here](https://github.com/ultrasoundlabs/openplane/tree/main/ios/OpenPlane), so it's probably not terrible bugs-wise, but still treat this app as you would any other vibecoded app
+This app is fully vibecoded. [There are extensive E2E tests here](https://github.com/ultrasoundlabs/openplane/tree/main/ios/OpenPlane), so it's probably not terrible bugs-wise, but still treat this app as you would any other vibecoded app.
+
+## License
+
+[MIT
+](./LICENSE.md)
