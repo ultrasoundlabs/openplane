@@ -2,6 +2,10 @@
 
 Native, tiny & open-source iOS app for Plane.so Community Edition, including cloud and self-hosted instances.
 
+| | |
+|---|---|
+| ![telegram-cloud-photo-size-2-5190891070609362411-y](https://github.com/user-attachments/assets/958dc651-1cbe-4412-b534-e58d22bcff61) | ![telegram-cloud-photo-size-2-5190891070609362412-y](https://github.com/user-attachments/assets/8770f276-19d8-4983-bdae-f9aa76f26d4f) |
+
 ## What
 
 OpenPlane is a simple SwiftUI iOS app that acts as a client to [Plane Community Edition's REST API](https://developers.plane.so/api-reference/introduction). Plane is an open-source alternative to Jira, Linear, and such productivity-maxxing corpoapps. You can self-host Plane on your server and then use OpenPlane to access it via mobile.
